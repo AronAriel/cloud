@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from db import SessionLocal
-from models import Consultation
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import logging
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
-import os
+from services import (
+    create_consultation as create_consultation_service,
+    list_consultations,
+    send_service_bus_message,
+)
 
 load_dotenv()
 
@@ -17,20 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SEND_CONNECTION_STRING = os.getenv("SEND_CONNECTION_STRING")
-QUEUE_NAME = os.getenv("QUEUE_NAME")
-
 app = FastAPI()
-
-
-
-conn_str = os.getenv("SEND_CONNECTION_STRING")
-queue_name = os.getenv("QUEUE_NAME")
-
-with ServiceBusClient.from_connection_string(conn_str) as client:
-    sender = client.get_queue_sender(queue_name=queue_name)
-    with sender:
-        sender.send_messages(ServiceBusMessage("New feedback created"))
 
 
 class ConsultationCreate(BaseModel):
@@ -43,10 +31,14 @@ def send_message(message: str):
     try:
         logger.info("Sending message to Service Bus")
 
-        with ServiceBusClient.from_connection_string(SEND_CONNECTION_STRING) as client:
-            sender = client.get_queue_sender(queue_name=QUEUE_NAME)
-            with sender:
-                sender.send_messages(ServiceBusMessage(message))
+        connection_string = os.getenv("SEND_CONNECTION_STRING")
+        queue_name = os.getenv("QUEUE_NAME")
+
+        if not connection_string or not queue_name:
+            logger.warning("Service Bus settings are missing; message was not sent")
+            return
+
+        send_service_bus_message(connection_string, queue_name, message)
 
         logger.info("Message sent successfully")
 
@@ -61,22 +53,16 @@ def get_consultations():
     db = SessionLocal()
 
     try:
-        consultations = db.query(Consultation).all()
+        consultations = list_consultations(db)
         logger.info(f"Found {len(consultations)} consultations")
-
-        return [
-            {
-                "id": c.id,
-                "pet_name": c.pet_name,
-                "date": str(c.date),
-                "vet_id": c.vet_id
-            }
-            for c in consultations
-        ]
+        return consultations
 
     except Exception as e:
         logger.error(f"Error fetching consultations: {e}")
         raise
+    finally:
+        if hasattr(db, "close"):
+            db.close()
 
 
 @app.post("/consultations")
@@ -86,24 +72,16 @@ def create_consultation(data: ConsultationCreate):
     db = SessionLocal()
 
     try:
-        new_item = Consultation(
-            pet_name=data.pet_name,
-            date=data.date,
-            vet_id=data.vet_id
-        )
-
-        db.add(new_item)
-        db.commit()
-
-        logger.info(f"Consultation created with id={new_item.id}")
-
-        send_message(f"New consultation created: {new_item.id}")
-
-        return {"message": "created"}
+        result = create_consultation_service(db, data, send_message)
+        logger.info("Consultation created")
+        return result
 
     except Exception as e:
         logger.error(f"Error creating consultation: {e}")
         raise
+    finally:
+        if hasattr(db, "close"):
+            db.close()
 
 
 @app.on_event("startup")

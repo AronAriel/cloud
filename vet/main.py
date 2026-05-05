@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from db import SessionLocal
-from models import Vet
+from services import list_vets
 import logging
 
 logging.basicConfig(
@@ -19,21 +19,16 @@ def get_vets():
     db = SessionLocal()
 
     try:
-        vets = db.query(Vet).all()
+        vets = list_vets(db)
         logger.info(f"Found {len(vets)} vets")
-
-        return [
-            {
-                "id": v.id,
-                "name": v.name,
-                "specialization": v.specialization
-            }
-            for v in vets
-        ]
+        return vets
 
     except Exception as e:
         logger.error(f"Error fetching vets: {e}")
         raise
+    finally:
+        if hasattr(db, "close"):
+            db.close()
 
 
 @app.on_event("startup")

@@ -1,10 +1,9 @@
 from fastapi import FastAPI
 from db import SessionLocal
-from models import Feedback
 from azure.servicebus import ServiceBusClient
 import threading
-import time
 import logging
+from services import consume_service_bus_messages, list_feedbacks
 
 
 from dotenv import load_dotenv
@@ -32,21 +31,21 @@ def get_feedbacks():
     logger.info("Fetching feedbacks")
 
     db = SessionLocal()
-    feedbacks = db.query(Feedback).all()
+    try:
+        feedbacks = list_feedbacks(db)
+        logger.info(f"Found {len(feedbacks)} feedbacks")
+        return feedbacks
+    finally:
+        if hasattr(db, "close"):
+            db.close()
 
-    logger.info(f"Found {len(feedbacks)} feedbacks")
 
-    return [
-        {
-            "id": f.id,
-            "consultation_id": f.consultation_id,
-            "rating": f.rating,
-            "comment": f.comment
-        }
-        for f in feedbacks
-    ]
 def receive_messages():
     try:
+        if not RECEIVE_CONNECTION_STRING or not QUEUE_NAME:
+            logger.warning("Service Bus settings are missing; listener was not started")
+            return
+
         logger.info("Starting Service Bus listener...")
 
         with ServiceBusClient.from_connection_string(RECEIVE_CONNECTION_STRING) as client:
@@ -58,15 +57,9 @@ def receive_messages():
                 while True:
                     logger.info("Polling messages...")
 
-                    messages = receiver.receive_messages(max_message_count=10)
-
-                    if not messages:
+                    count = consume_service_bus_messages(receiver, logger)
+                    if count == 0:
                         logger.info("No messages received")
-                        continue
-
-                    for msg in messages:
-                        logger.info(f"Received message: {msg}")
-                        receiver.complete_message(msg)
 
     except Exception as e:
         logger.error(f"Error receiving messages: {e}")
