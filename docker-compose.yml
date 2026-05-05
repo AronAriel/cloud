@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  consultation-service:
+    build: ./consultation
+    container_name: consultation-service
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./consultation/.env
+    depends_on:
+      - feedback-service
+
+  feedback-service:
+    build: ./feedbackvet
+    container_name: feedback-service
+    ports:
+      - "8002:8000"
+    env_file:
+      - ./feedbackvet/.env
+
+  vet-service:
+    build: ./vet
+    container_name: vet-service
+    ports:
+      - "8003:8000"
+    env_file:
+      - ./vet/.env
