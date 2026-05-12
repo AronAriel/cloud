@@ -1,11 +1,10 @@
 from fastapi.testclient import TestClient
 from main import app
-import pytest
 
 client = TestClient(app)
 
 
-def test_get_vets(monkeypatch):
+def test_graphql_vets_query(monkeypatch):
     class FakeVet:
         def __init__(self):
             self.id = 1
@@ -21,9 +20,28 @@ def test_get_vets(monkeypatch):
 
     monkeypatch.setattr("main.SessionLocal", lambda: FakeDB())
 
-    response = client.get("/vets")
+    response = client.post(
+        "/graphql",
+        json={
+            "query": """
+                query {
+                    vets {
+                        id
+                        name
+                        specialization
+                    }
+                }
+            """
+        },
+    )
 
     assert response.status_code == 200
     data = response.json()
 
-    assert data[0]["name"] == "Dr. Smith"
+    assert data["data"]["vets"] == [
+        {
+            "id": 1,
+            "name": "Dr. Smith",
+            "specialization": "Surgery",
+        }
+    ]

@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+import strawberry
+from strawberry.fastapi import GraphQLRouter
 from db import SessionLocal
 from services import list_vets
 import logging
@@ -12,14 +14,34 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 
-@app.get("/vets")
+@strawberry.type
+class VetType:
+    id: int
+    name: str
+    specialization: str
+
+
+@strawberry.type
+class Query:
+    @strawberry.field
+    def vets(self) -> list[VetType]:
+        return get_vets()
+
+
 def get_vets():
     logger.info("Fetching vets")
 
     db = SessionLocal()
 
     try:
-        vets = list_vets(db)
+        vets = [
+            VetType(
+                id=vet["id"],
+                name=vet["name"],
+                specialization=vet["specialization"],
+            )
+            for vet in list_vets(db)
+        ]
         logger.info(f"Found {len(vets)} vets")
         return vets
 
@@ -29,6 +51,10 @@ def get_vets():
     finally:
         if hasattr(db, "close"):
             db.close()
+
+
+schema = strawberry.Schema(query=Query)
+app.include_router(GraphQLRouter(schema), prefix="/graphql")
 
 
 @app.on_event("startup")

@@ -9,3 +9,4 @@ flake8
 pytest
 httpx
 pydantic
+strawberry-graphql[fastapi]

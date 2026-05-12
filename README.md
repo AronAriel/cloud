@@ -16,11 +16,11 @@ docker compose up --build
 ```
 
 Service URLs:
-- VetService: http://localhost:8003/vets
+- VetService GraphQL: http://localhost:8003/graphql
 - ConsultationService: http://localhost:8001/consultations
 - FeedbackService: http://localhost:8002/feedbacks
 
 ## Endpoints:
-- /vets
+- /graphql (VetService query: `{ vets { id name specialization } }`)
 - /consultations
 - /feedbacks
